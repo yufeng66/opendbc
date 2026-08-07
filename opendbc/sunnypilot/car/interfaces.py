@@ -32,6 +32,18 @@ class LatControlInputs(NamedTuple):
 TorqueFromLateralAccelCallbackTypeTorqueSpace = Callable[[LatControlInputs, structs.CarParams.LateralTorqueTuning, bool], float]
 
 
+def get_speed_dep_config():
+  """Load speed-dependent torque config from toml. Cached after first call."""
+  if not hasattr(get_speed_dep_config, '_cache'):
+    import os
+    import tomllib
+    from opendbc.car.common.basedir import BASEDIR
+    path = os.path.join(BASEDIR, 'torque_data/speed_dependent.toml')
+    with open(path, 'rb') as f:
+      get_speed_dep_config._cache = tomllib.load(f)
+  return get_speed_dep_config._cache
+
+
 class CarInterfaceBaseSP:
   @staticmethod
   def torque_from_lateral_accel_linear_in_torque_space(latcontrol_inputs: LatControlInputs, torque_params: structs.CarParams.LateralTorqueTuning,
