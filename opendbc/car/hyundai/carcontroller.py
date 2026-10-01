@@ -28,6 +28,9 @@ MAX_ANGLE_CONSECUTIVE_FRAMES = 2
 # and triggers the "SCC Conditions Not Met" alert. Delaying the button send lets factory SCC disengage
 # naturally on brake press. We send ~100 ms later if it fails to do so, or if we want to cancel for another reason.
 CANCEL_BUTTON_DELAY_FRAMES = 10
+# RES copies per CLU11 burst on CAN-FD blended cars. On a busy bus 1, 25 copies took ~20 ms to drain, i.e. a whole
+# cluster CLU11 period, so they always overlapped the cluster's next frame. 8 drain in ~6 ms, inside the gap.
+BLENDED_RES_COPIES = 8
 
 
 def process_hud_alert(enabled, fingerprint, hud_control):
@@ -250,15 +253,22 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
         self.accel_last = accel
     else:
       if can_canfd_blended:
-        if CC.cruiseControl.cancel:
-          can_sends.append(hyundaican.create_clu11(self.packer, self.frame, CS.clu11, Buttons.CANCEL, self.CP, self.CAN))
-        elif CC.cruiseControl.resume:
-          # send resume at a max freq of 10Hz
-          if (self.frame - self.last_button_frame) * DT_CTRL > 0.1:
-            # send 25 messages at a time to increases the likelihood of resume being accepted
-            can_sends.extend([hyundaican.create_clu11(self.packer, self.frame, CS.clu11, Buttons.RES_ACCEL, self.CP, self.CAN)] * 25)
-            if (self.frame - self.last_button_frame) * DT_CTRL >= 0.15:
-              self.last_button_frame = self.frame
+        # Our CLU11 shares bus 1 and ID 0x4f1 with the cluster's own 50 Hz CLU11. Two pending frames with the same ID
+        # and different data collide on every retry, which runs the panda's TEC up to error-passive or bus-off. Only
+        # send on the cycle a fresh cluster frame arrived, so ours drain in the ~15 ms before its next one.
+        if CS.clu11_fresh:
+          if CC.cruiseControl.cancel:
+            # stock SCC cancels itself on brake, so a cancel then only adds collisions; if cruise is still on once
+            # the brake is released, cancel is still requested and goes out then
+            if not CS.out.brakePressed:
+              can_sends.append(hyundaican.create_clu11(self.packer, self.frame, CS.clu11, Buttons.CANCEL, self.CP, self.CAN))
+          elif CC.cruiseControl.resume:
+            # send resume at a max freq of 10Hz
+            if (self.frame - self.last_button_frame) * DT_CTRL > 0.1:
+              can_sends.extend([hyundaican.create_clu11(self.packer, self.frame, CS.clu11, Buttons.RES_ACCEL, self.CP, self.CAN)] *
+                               BLENDED_RES_COPIES)
+              if (self.frame - self.last_button_frame) * DT_CTRL >= 0.15:
+                self.last_button_frame = self.frame
       else:
         # button presses
         if (self.frame - self.last_button_frame) * DT_CTRL > 0.25:
