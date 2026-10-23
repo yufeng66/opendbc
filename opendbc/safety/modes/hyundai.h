@@ -450,7 +450,7 @@ static safety_config hyundai_init(uint16_t param) {
   } else if (hyundai_camera_scc) {
     static RxCheck hyundai_cam_scc_rx_checks[] = {
       HYUNDAI_COMMON_RX_CHECKS(false, false, 0)
-      HYUNDAI_SCC12_ADDR_CHECK(2,false)
+      HYUNDAI_SCC12_ADDR_CHECK(false, 2)
       HYUNDAI_SCC11_ADDR_CHECK(2)
       HYUNDAI_LDA_BUTTON_ADDR_CHECK(0)
     };
